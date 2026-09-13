@@ -1,397 +1,185 @@
-# veteran
+# Menu / Pulsehack UI Library
 
-A self-contained Lua UI library for Roblox exploit/utility scripts. Ships a top bar, tabbed windows, a full widget set (toggles, sliders, dropdowns, color pickers, keybinds, buttons, textboxes), theming with save/load/autoload, a draggable watermark, a config export/import system, and an optional CoreGui redesign mode that replaces the native Roblox chat/backpack/player-list/emotes bar with its own hotbar and utility panels.
+A self-contained Drawing/Instance-based UI framework for Roblox executor scripts. It builds a full windowing system (windows, tabs, sections, groupboxes, and ~15 element types) on top of raw `Instance.new` calls, ships its own theme engine, config (flag) save/load system, notification/watermark/keybind-list overlays, and filesystem-backed persistence (fonts, images, configs, themes, `.lua` scripts).
 
-> Loaded by a loader script (e.g. `VeteranLoader.lua`). Do not inject this file standalone — it expects to be required/run in an environment with an executor's `getgenv`/filesystem functions available.
+The library is obfuscator-aware (LPH_* stubs at the top let it run un-obfuscated during development) and expects to run inside an executor environment with `getgenv`, filesystem, and `hookfunction`-class APIs available.
 
----
+## Requirements
 
-## Contents
+The script assumes an executor exposing (non-exhaustive):
 
-- [Quick start](#quick-start)
-- [Concepts](#concepts)
-- [Windows, tabs & sections](#windows-tabs--sections)
-- [Widgets](#widgets)
-  - [Toggle](#toggle)
-  - [Slider](#slider)
-  - [Dropdown](#dropdown)
-  - [Colorpicker](#colorpicker)
-  - [Button](#button)
-  - [Textbox](#textbox)
-  - [Keybind](#keybind)
-  - [Chat filter](#chat-filter)
-- [Options, flags & persistence](#options-flags--persistence)
-- [Themes](#themes)
-- [Watermark](#watermark)
-- [Notifications & confirm dialogs](#notifications--confirm-dialogs)
-- [Changelog / info panel](#changelog--info-panel)
-- [Feature jump / search](#feature-jump--search)
-- [CoreGui redesign mode](#coregui-redesign-mode)
-- [Licensing / ops backend](#licensing--ops-backend)
-- [Unloading](#unloading)
-- [Full API reference](#full-api-reference)
+- Filesystem: `readfile`, `writefile`, `isfile`, `listfiles`, `delfile`, `isfolder`, `makefolder`, `loadfile`
+- Environment: `getrenv`, `getgenv`, `setthreadidentity`
+- Hooking: `hookfunction`, `hookmetamethod`
+- Misc: `request`, `checkcaller`, `isrbxactive`, `getcustomasset`, `sethiddenproperty`, `mousemoverel`, `crypt.base64.decode`
 
----
+If any of these are missing at runtime the corresponding features (config persistence, custom fonts/images, keybind blocking, etc.) will error — the library does not feature-detect around them.
+
+## Loading
+
+The file is a single chunk that returns the `Menu` table:
+
+```lua
+local Menu = loadstring(YourSourceString)()
+-- Menu.Library is the public API surface once initialization has run
+local Library = Menu.Library
+```
+
+Initialization happens automatically at the bottom of the script — it builds `Menu`, calls `Menu.Init(Library)`, and disables the Roblox CoreGui/topbar. There is no separate "New()" call to make; loading the script is enough.
+
+Two globals are also set for convenience/back-compat: `getgenv().Menu` and `_G.Menu`.
+
+## Core object model
+
+```
+Menu (module-level singleton)
+└─ Library                      -- Library:Window(), Library:Notify(), Library:Card(), Library:Dock(), Library:SetTheme(), Library:Fade(), Library:AddAccent(), Library:Find()
+   └─ Window  (Library:Window)  -- Window:Tab(), Window:Watermark(), Window:KeybindsList(), Window:SpectatorsList(), Window:CloseContent(), Window:Find()
+      └─ Tab  (Window:Tab)      -- Tab:Section(), Tab:MultiSection(), Tab:Open()
+         └─ Section (Tab:Section) -- Section:Groupbox(), Section:<Element>(), Section:Open(), Section:Update()
+            └─ Groupbox (Section:Groupbox)
+               └─ Group (Groupbox:Add) -- also accepts every Section:<Element>() call
+                  └─ Elements: Toggle, Slider, Dropdown, Button, TextBox, CodeBox, Label,
+                                List, ExpandableToggle, ExpandableLabel, Colorpicker, Keybind
+```
+
+Everything below `Section` shares the same `Sections` metatable, so a `Groupbox` "Group" and a plain `Section` both expose the same element-creation methods (`:Toggle{}`, `:Slider{}`, etc.). `Colorpicker` and `Keybind` are attached to an existing element (e.g. a Toggle) rather than created standalone — see below.
+
+All creation methods take a single `Parameters` table and return the created object (plus, for a couple, a second value). Missing fields fall back to sensible defaults baked into the function.
 
 ## Quick start
 
 ```lua
-local veteran = getgenv().veteran
+local Library = Menu.Library
 
--- boots the UI (splash screen, top bar, all built-in panels)
-veteran:boot()
-
--- run code once the UI has finished booting
-veteran:ready(function(ui)
-    local window = ui:window({ name = "configurations", tab = "Configurations" })
-    local page = window:tab({ name = "main" })
-    local section = page:section({ name = "example" })
-
-    section:toggle({
-        name = "silent aim",
-        flag = "silent_aim",
-        default = false,
-        callback = function(on)
-            print("silent aim:", on)
-        end,
-    })
-end)
-```
-
-The library is a singleton stored at `getgenv().veteran`. Calling `boot()` a second time while it's already mounted is a no-op.
-
----
-
-## Concepts
-
-| Concept | Description |
-|---|---|
-| **Window** | A floating panel opened from the top bar (e.g. `Configurations`, `Themes`, `Environment`). Created with `veteran:window(...)`. |
-| **Tab** | A named page inside a window. `window:tab({ name = "main" })`. |
-| **Section** | A titled box inside a tab, placed in the left or right column. `page:section({ name = "..." })`. |
-| **Flag** | A unique string key identifying a persisted option (toggle/slider/dropdown/color/text/keybind). Options with a `flag` are auto-saved and reloaded across sessions. |
-| **Option meta** | Internal registry (`veteran.option_meta`) mapping every flag to its widget type, default, current key/bind, and setter — powers persistence, the keybind list, search, and "jump to feature". |
-
----
-
-## Windows, tabs & sections
-
-```lua
-local window = veteran:window({
-    name = "configurations",     -- window title
-    tab = "Configurations",      -- ties this window to a top-bar tab
-    size = UDim2.fromOffset(560, 430),
-    position = UDim2.fromOffset(68, 68),
+local Window = Library:Window({
+    Name = "My Script",
+    Size = Vector2.new(500, 450),
+    Bind = Enum.KeyCode.RightAlt, -- toggle key, or false/"None" to disable
+    HasTabs = true,
+    Visible = true,
 })
 
-local page = window:tab({ name = "combat" })   -- creates or returns existing tab
-local left_section  = page:section({ name = "aimbot" })                 -- left column (default)
-local right_section = page:section({ name = "esp", side = "right" })    -- right column
-```
+local Tab = Window:Tab({ Name = "Main", Opened = true })
 
-- Calling `window:tab({ name = ... })` again with the same name just switches to it (`open_tab`).
-- Sections auto-size vertically to their contents and stack top-to-bottom in whichever column they're placed in.
-- `window:section(...)` is shorthand that adds to whatever the currently open tab is (creating a `"main"` tab if none exists yet).
+local Section = Tab:Section({ Name = "Combat", Side = "Left", Size = 300 })
 
----
-
-## Widgets
-
-All widget constructors live on a **section** object (`section:toggle{...}`, `section:slider{...}`, etc.) and share this pattern:
-
-- `flag` *(optional)* — if given, the widget's value is registered in `veteran.options`, persisted to disk, and reloaded on next boot.
-- `name` *(optional)* — display label. Falls back to a prettified version of `flag` (underscores → spaces) if omitted.
-- `get` / `set` *(optional)* — custom getter/setter, used instead of the flag-backed default when you want to bind the widget to something else entirely.
-- `callback` *(optional, alias `set`)* — fired whenever the value changes.
-
-### Toggle
-
-```lua
-section:toggle({
-    name = "esp",
-    flag = "esp_enabled",
-    default = false,
-    color = { flag = "esp_color", default = Color3.fromRGB(255, 0, 0) }, -- optional attached color swatch
-    callback = function(on) ... end,
-})
-```
-
-### Slider
-
-```lua
-section:slider({
-    name = "fov",
-    flag = "fov_radius",
-    min = 10,
-    max = 500,
-    default = 120,
-    interval = 1,     -- step size; supports fractional steps (e.g. 0.01)
-    suffix = "px",    -- appended to the displayed value
-    callback = function(value) ... end,
-})
-```
-
-Right-click (or `MouseButton2`) on a slider label/track to open a precise numeric-entry popup.
-
-### Dropdown
-
-```lua
--- single-select
-section:dropdown({
-    name = "target priority",
-    flag = "priority",
-    items = { "closest", "lowest health", "highest health" },
-    default = "closest",
-})
-
--- multi-select
-section:dropdown({
-    name = "ignore teams",
-    flag = "ignored_teams",
-    items = { "Red", "Blue", "Spectator" },
-    multi = true,
-    default = {},
-})
-```
-
-### Colorpicker
-
-```lua
-section:colorpicker({
-    name = "chams color",
-    flag = "chams_color",
-    default = Color3.fromRGB(0, 255, 140),
-})
-```
-
-Opens a saturation/value square + hue slider + RGB text entry.
-
-### Button
-
-```lua
-section:button({
-    name = "reset camera",
-    flag = "reset_camera",   -- optional, enables keybind assignment
-    callback = function() ... end,
-})
-```
-
-### Textbox
-
-```lua
-section:textbox({
-    name = "webhook url",
-    flag = "webhook_url",
-    placeholder = "https://...",
-    default = "",
-    callback = function(text) ... end,
-})
-```
-
-### Keybind
-
-```lua
-section:keybind({
-    name = "toggle esp",
-    flag = "esp_enabled",   -- binds to an existing toggle/button flag
-    default = Enum.KeyCode.E,
-})
-```
-
-Click the bind chip and press any key/mouse button to rebind; press **Escape** to clear. Right-click a row in the **Keybinds** panel to flip between `toggle` and `hold` mode.
-
-### Chat filter
-
-A prebuilt "keyword watcher" widget for logging chat matches:
-
-```lua
-page:chat_filter({
-    name = "trigger words",
-    side = "right",
-    flag = "chat_filter_keywords",
-    enabled_flag = "chat_filter_enabled",
-})
-```
-
-Renders a keyword input + chip list + a live log of matching players (click a logged row to copy `DisplayName | UserId`).
-
----
-
-## Options, flags & persistence
-
-Every flagged widget writes into `veteran.options[flag]` and is described in `veteran.option_meta[flag]`. Low-level accessors:
-
-```lua
-veteran:get_option(flag)
-veteran:set_option(flag, value)
-```
-
-Config is saved to **`veteran/configs/current.json`** (falls back to reading legacy `veteran/config.json`), debounced ~0.4s after the last change. You can also export/import a full config blob manually:
-
-```lua
-local json = veteran:export_config()
-veteran:import_config(json)
-```
-
-UI-only flags (top bar visibility, the menu keybind, watermark toggle, etc.) are excluded from `export_config`/`import_config` — they live in the same save file but are treated as chrome, not "your script's settings".
-
----
-
-## Themes
-
-Opened from the top bar's **Themes** tab. Themes cover the full color palette plus hotbar layout (`hotbar_size`, `hotbar_spacing`) and a couple of chrome toggles (top bar autohide, "hide fullscreen exit button").
-
-```lua
-veteran:set_theme("Accent", Color3.fromRGB(120, 90, 200))
-veteran:write_theme_file("my_theme")        -- veteran/themes/my_theme.json
-veteran:load_theme_file("my_theme")
-veteran:set_autoload("my_theme")            -- load automatically on next boot
-veteran:set_autoload(nil)                   -- disable autoload
-veteran:reset_theme()                       -- restore defaults
-```
-
-Theme keys: `Accent`, `Window Background`, `Window Border`, `Tab Background`, `Tab Border`, `Tab Toggle Background`, `Section Background`, `Section Border`, `Text`, `Disabled Text`, `Object Background`, `Object Border`, `Dropdown Option Background`.
-
----
-
-## Watermark
-
-A small, draggable, always-on-top label. Configurable from the **Watermark** tab: name, clock, FPS, ping — each independently toggleable. Position/anchor persist to `veteran/watermark.json` whenever you drag it.
-
-```lua
-veteran:set_watermark_opt("enabled", true)
-veteran:set_watermark_opt("fps", true)
-```
-
----
-
-## Notifications & confirm dialogs
-
-```lua
-veteran:notification({ text = "loaded config", duration = 3 })
-
-veteran:confirm({
-    name = "reset all settings?",
-    options = { "Yes", "No" },
-    callback = function(choice)
-        if choice == "Yes" then veteran:reset_theme() end
+Section:Toggle({
+    Name = "Silent Aim",
+    Default = false,
+    Flag = "SilentAim",     -- optional, used by Menu.Config save/load
+    Category = "Combat",    -- optional grouping for the flag table
+    Callback = function(Value)
+        print("Silent Aim:", Value)
     end,
 })
-```
 
----
-
-## Changelog / info panel
-
-The **info** tab shows the version number, a scrollable changelog, and the current license role/key.
-
-```lua
-veteran:set_changelog({
-    { tag = "+", text = "added silent aim", jump = { tab = "combat", sections = { "aimbot" } } },
-    { tag = "-", text = "removed legacy esp" },
-    { tag = "M", text = "reworked config window" },
-})
-```
-
-`tag` is one of `"+"` (added, accent color), `"-"` (removed, red), `"M"` (modified, gold), or omitted for a plain note. If `jump` is supplied, clicking the entry calls `reveal_feature` to open the right tab and highlight the section.
-
----
-
-## Feature jump / search
-
-Every section/control is searchable via the search box in the **Configurations** window (matches section name, control names, flags, and page name). You can also jump to a feature programmatically:
-
-```lua
-veteran:reveal_feature({
-    tab = "combat",
-    sections = { "aimbot" },   -- pulses the section border/title
-    flag = "fov_radius",       -- also pulses this specific control
+Section:Slider({
+    Name = "FOV",
+    Min = 0, Max = 500, Default = 100,
+    Flag = "FOV", Category = "Combat",
+    Callback = function(Value) print(Value) end,
 })
 
--- or just open a top-bar chrome panel (Themes/Environment/etc.)
-veteran:reveal_feature({ chrome = "Environment" })
+Library:Notify({ Text = "Script loaded!", Time = 3 })
 ```
 
----
+## `Library` — top level API
 
-## CoreGui redesign mode
+| Method | Parameters | Notes |
+|---|---|---|
+| `Library:Window(params)` | `Name`, `Size` (`Vector2` or `UDim2`), `Bind` (KeyCode, default `RightAlt`; `false`/`"None"` disables), `Callback`, `HasTabs`, `Visible`, `Disabled` | Creates and returns a top-level window. Registers it in `Library.Windows`. |
+| `Library:Notify(params)` | `Text`, `Time` (seconds, default 3) | Slides a toast into the global notification tray. |
+| `Library:Card(params)` | `Parent`, `Position`, `Size`, `Draggable`, `Invisible`, `Text`, `Fade` | Low-level themed panel primitive; used internally by `Notify`/`SpectatorsList`, usable directly for custom overlays. |
+| `Library:Dock(params)` | `Windows` (table), `Text` | Builds a top-of-screen dock/taskbar strip. |
+| `Library:AddAccent(object, zIndex?, offset?, vertical?)` | — | Draws the two-tone accent line used throughout the UI; returns the two accent Frames. |
+| `Library:SetTheme(newTheme, indexes, keys?)` | `indexes` is `"All"` or a table of theme keys to restrict the repaint to | Repaints every registered `Library.Colors[instance]` entry from the (new) theme table. |
+| `Library:Find(name)` | — | Returns a registered `Window` by `Name`, plus its index. |
+| `Library:Fade(self, visible)` | — | Generic show/hide fade helper used by Windows, Watermark, KeybindsList, SpectatorsList, Cards. |
 
-Set the `CoreGui_Redesign` local at the top of the file to `true` (or toggle "rewrite coregui" in the Themes tab, dev/owner only) to have veteran take over Roblox's native chat, backpack, player list, and emotes menu — hiding the stock top bar and rendering its own hotbar (number-key tool switching) and utility flyout panels instead. With it left `false`, veteran only adds its own top bar alongside the default Roblox UI and leaves chat/backpack/players/emotes untouched.
+## `Window` methods
 
-Only users resolved as `dev`/`owner` (see [Licensing](#licensing--ops-backend)) can enable this mode at runtime.
+| Method | Parameters | Notes |
+|---|---|---|
+| `Window:Tab(params)` | `Name`, `Opened` | Only meaningful when the window was created with `HasTabs = true`; adds a tab button + content area. |
+| `Window:Watermark(params)` | `Text`, `Enabled` | One watermark per window; `Watermark:SetText()`, `:Set(position)`, `:Get()`, `:Enable(bool)`. |
+| `Window:KeybindsList(params)` | `Enabled` | Floating list of active keybinds; `:Add(keybind)`, `:Remove(...)`, `:Enable(bool)`. |
+| `Window:SpectatorsList(params)` | `Enabled` | Floating spectator/name list; `:Add(name)`, `:Remove(...)`, `:Clear()`. |
+| `Window:CloseContent(content?)` | — | Closes the currently open Tab/Section (or a specific content list). |
+| `Window:Find(name)` | — | Finds a child Tab by name. |
 
----
+When `HasTabs = false`, the window behaves like a single implicit tab/section container (its metatable falls back to `Tabs`/`Windows` methods directly), so you can call `Window:Section({...})` on it without creating an explicit Tab.
 
-## Licensing / ops backend
+## `Tab` methods
 
-veteran ships with an optional Supabase-backed licensing/ops layer (`veteran:ops(action, extra)`) used for:
-
-- resolving the caller's role (`veteran` / `dev` / `owner`) via `getgenv().veteran_session`
-- an in-game "panel" tab (dev/owner only) listing other live licensed users, with join/bring actions
-- a "report" dialog (game support / report another user / request dev-owner assistance) with server-side cooldowns
-
-This is entirely optional infrastructure for products that gate features by license tier — a standalone UI consumer can ignore `veteran:ops`, `OWNER_IDS`/`DEV_IDS`, and the `panel`/report tabs entirely.
-
----
-
-## Unloading
-
-```lua
-veteran:unload()
-```
-
-Disconnects every signal, destroys the ScreenGui, restores any hidden CoreGui elements, and clears `getgenv().veteran` so a fresh inject can boot cleanly.
-
----
-
-## Full API reference
-
-### Lifecycle
-| Method | Description |
+| Method | Parameters |
 |---|---|
-| `veteran:boot()` | Mounts and plays the splash/boot sequence. |
-| `veteran:ready(fn)` | Runs `fn(veteran)` once booted (immediately if already booted). |
-| `veteran:unload()` | Tears down the entire UI and its hooks. |
+| `Tab:Section(params)` | `Name`, `Side` (`"Left"`/`"Right"`/`"Fill"`), `Fill` (bool), `Offset`, `Size` |
+| `Tab:MultiSection(params)` | `Name`, `Side`, `Fill`, `Sections` (array of tab names, default `{"Neutral","Priority","Friendly","Local"}`), `OpenIndex`, `Offset`, `Size` — returns a tabbed container whose `:Add(name, opened)` yields further `Section`-like objects |
+| `Tab:Open()` | Switches the window's visible content to this tab |
 
-### Windows
-| Method | Description |
+## `Section` / `Groupbox` methods
+
+| Method | Notes |
 |---|---|
-| `veteran:window(props)` | Creates/returns a draggable window. `props.tab` links it to a top-bar tab. |
-| `window:tab(props)` | Creates or switches to a named tab. |
-| `window:open_tab(name)` | Switches to an existing tab. |
-| `window:section(props)` | Adds a section to the current tab. |
-| `window:resize(udim2)` | Resizes the window frame. |
+| `Section:Groupbox(params)` | `Groups` (array of `{Name, Image, Size}` icon-tab groups), `OpenIndex`. Returns `(Groups, Groupbox)`. |
+| `Groupbox:Add(name, image, size, opened)` | Adds one icon-tab group (returns nothing; access via `Groupbox:Find(name)`). |
+| `Groupbox:Find(name)` / `Groupbox:Remove(name)` | — |
+| `Section:Open()` / `Section:Update()` | Manual visibility/layout control (elements normally call this for you). |
 
-### Sections (widget factories)
-`section:toggle`, `section:slider`, `section:dropdown`, `section:colorpicker` (alias `section:color`), `section:button`, `section:textbox`, `section:keybind`, `page:chat_filter`.
+Every `Section` and every `Groupbox` "Group" exposes the full element set below.
 
-### Options
-| Method | Description |
-|---|---|
-| `veteran:get_option(flag)` / `set_option(flag, value)` | Low-level flag read/write. |
-| `veteran:export_config()` / `import_config(json)` | Serialize/apply a full options+binds blob. |
+## Element creators (`Section:<Name>(params)`)
 
-### Theming
-`set_theme`, `write_theme_file`, `load_theme_file`, `delete_theme_file`, `list_theme_files`, `set_autoload`, `reset_theme`.
+Common optional parameters across most elements: `Flag` (string key for save/load), `Category` (string key to nest the flag under), `Hidden`, `Unsafe` / `Indev` / `Blocked` (recolor the label to warn/annotate), `Exclude` (excludes the flag from `Menu.Config("Get"/"Load")`).
 
-### Misc UI
-`notification`, `confirm`, `set_changelog`, `reveal_feature`.
+| Element | Key parameters | Instance methods |
+|---|---|---|
+| `Toggle` | `Name`, `Default`, `Callback(value)` | `.Get()`, `.Set(bool, fire?)` |
+| `Slider` | `Name`, `Min`, `Max`, `Default`, `Prefix`, `Decimals`, `Specials`, `Callback(value)` | `.Get()`, `.Set(value, fire?)`, `.SetMax(max)`, `.Refresh()` |
+| `Dropdown` | `Name`, `Options` (array), `Default` (string, or array for multi-choice), `Min` (min selections), `Size`, `Callback(value)` | `.Get()`, `.Set(value)`, `.Open()`, `.Close()`, `.Update()`, `.Refresh()` |
+| `Button` | `Name`, `Confirm` (require a second click), `CallbackText` (temporary label swap), `Callback(...)` | `.Activate()`, `.GetChosen()` |
+| `TextBox` | `Name`, `Placeholder`, `Default`, `ResetText`, `ResetOnSubmit`, `RequireSubmit`, `Callback(text)` | `.Get()`, `.Set(string)` |
+| `CodeBox` | `Default` (code string), `Size` (px height) | `.Get()`/`.GetText()`, `.Set()`/`.SetText()`, `.UpdateLines()`, `.UpdateSize()`, `.GetLineNumber()` |
+| `Label` | `Text`, `Icon` | `.Get()`, `.Set()`, `.SetText()` |
+| `List` | `Options` (map of `name -> {col1, col2, col3, ...}`), `Rows` (column headers), `Default`, `Clickable`, `Filter(fn)`, `Added(fn)`, `Callback(...)`, `Size` | `.Add()`, `.Remove()`, `.Find()`, `.Empty()`, `.Sort()`, `.SetValue(index)`/`.GetValue()`, `.SetValues()`/`.EditValue()`/`.EditValues()`, `.ShowValues()` |
+| `ExpandableToggle` | `Name`, `Default`, `Opened`, `Size`, `Callback(value)` | `.Get()`, `.Set()`, `.Expand()`, `.Collapse()`, `.SetSize()` |
+| `ExpandableLabel` | `Text`, `Opened`, `Size`, `Icon` | `.Get()`, `.Set()`, `.SetText()`, `.Expand()`, `.Collapse()` |
 
-### Chrome / redesign
-`set_coregui_rewrite(on)`, `wants_coregui_redesign()`, `set_utility_open(name, on)` (`"chat" | "backpack" | "players" | "emotes"`).
+## Sub-elements (attached to an existing element via `Elements.<Name>`)
 
----
+These decorate an element you already created (they read `Self.Section`/`Self.Frame` from the host):
 
-## File layout on disk
+| Method | Key parameters | Instance methods |
+|---|---|---|
+| `Elements.Colorpicker(host, params)` | `Color` (Color3), `Side`, `Transparency` (number, enables an alpha slider), `Callback(color, transparency?)` | `.Get()`, `.Set()`, `.FromRGB()`, `.Refresh()`, `.Open()/.Close()/.Show()/.Hide()`, `.Update()` |
+| `Elements.Keybind(host, params)` | `Default` (KeyCode/UserInputType), `Mode` (`"Toggle"`, `"Held"`, `"Always On"`, `"Off Hold"`), `Modes` (allowed list), `Activated(fn)`, `Changed(fn)` | `.Get()`, `.Set()`, `.Open()/.Close()`, `.SetPickable()`, `.SetKeyFromInput()`, `.Shorten()`, `.Updated()` |
+| `Elements.Show(self)` / `.Hide(self)` / `.Remove(self)` | — | Generic visibility/teardown for any element |
 
-```
-veteran/
-├─ themes/
-│  ├─ <name>.json
-│  └─ autoload.txt
-├─ configs/
-│  └─ current.json
-├─ environment.json      -- friendly/enemy player relations
-├─ watermark.json
-└─ coregui_rewrite.txt
-```
+## Config (flag) persistence — `Menu.Config(action, method)`
+
+Every element created with a `Flag` (optionally nested under `Category`) is tracked in a global `Flags` table. `Menu.Config` reads/writes that table to `<BasePath>/Configs/<name>.cfg` as JSON.
+
+| Action | Arguments | Behavior |
+|---|---|---|
+| `"Get"` | — | Returns a JSON string of every flagged element's current value (skips `Exclude`d ones). |
+| `"New"` / `"Save"` | `Method` = config name | Writes the current flag state to disk. |
+| `"Load"` | `Method` = config name or raw JSON string | Reads a saved config and calls `.Set(value)` on every matching flag. |
+| `"Reset"` | `Method` = config name | Overwrites the file with `{}`. |
+| `"Delete"` | `Method` = config name | Deletes the file. |
+| `"List"` | — | Returns all `.cfg` file names in the Configs folder. |
+| `"Load Autoload"` / `"Set Autoload"` | `Method` = config name | Reads/writes a per-`Menu.Game` autoload pointer in `Configs/AutoLoad.json`. |
+
+## Theme persistence — `Menu.ConfigTheme(action, method, other?)`
+
+Mirrors `Menu.Config` but for the `Theme` table (colors are serialized as `{R, G, B, "IsRGB"}`), stored under `<BasePath>/Themes/<name>.json`. `"Load"` calls `Library:SetTheme(..., "All")` to repaint everything immediately.
+
+## Folder layout
+
+On load the library expects/creates a `Pulsehack/` root (configurable via the internal `BasePath` constant) with subfolders: `Fonts`, `Images`, `Configs`, `Luas`, `Themes`, and `Sounds/{Hitsounds,Killsounds}` — used respectively by `Menu.ImportFont`, `Menu.ImportImage`, `Menu.Config`/`Menu.ConfigTheme`, and `Menu.Lua` (a small script-loader/manager reading `.lua` files from `Luas/`).
+
+## Notes & caveats
+
+- This documentation was reverse-engineered directly from the extracted source (`ExtractedLib.lua`); the library has no doc comments of its own, so parameter names/behavior above are inferred from each function's default values and body.
+- The code contains hard-coded strings referencing third-party branding (e.g. inside `Windows.Watermark`/`Library:Dock` default text) — replace these with your own text via the `Text` parameter before shipping.
+- `Menu.Config("Load", ...)` calls `setthreadidentity(7)` before applying each flag — keep that in mind if you're auditing security-sensitive callbacks.
