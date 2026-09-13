@@ -1,1100 +1,397 @@
-# Veteran UI
+# veteran
 
-> A modern, lightweight Roblox UI library focused on clean layouts, smooth animations, theming, configurations, and extensibility.
+A self-contained Lua UI library for Roblox exploit/utility scripts. Ships a top bar, tabbed windows, a full widget set (toggles, sliders, dropdowns, color pickers, keybinds, buttons, textboxes), theming with save/load/autoload, a draggable watermark, a config export/import system, and an optional CoreGui redesign mode that replaces the native Roblox chat/backpack/player-list/emotes bar with its own hotbar and utility panels.
 
-**Veteran** is a dark, modular UI framework designed around a simple hierarchy:
-
-```text
-Veteran
- └── Window
-      └── Tab
-           └── Section
-                ├── Toggle
-                ├── Slider
-                ├── Dropdown
-                ├── Colorpicker
-                ├── Button
-                ├── Textbox
-                └── Keybind
-```
-
-The library includes built-in theme management, configuration persistence, keybind handling, notifications, watermarks, player/environment utilities, and optional Roblox CoreGui redesign functionality.
+> Loaded by a loader script (e.g. `VeteranLoader.lua`). Do not inject this file standalone — it expects to be required/run in an environment with an executor's `getgenv`/filesystem functions available.
 
 ---
 
-## Features
+## Contents
 
-* Clean dark UI design
-* Animated interactions and transitions
-* Window system with draggable panels
-* Multi-tab layouts
-* Left/right section columns
-* Toggles
-* Sliders
-* Dropdowns
-* Multi-select dropdowns
-* Color pickers
-* Buttons
-* Textboxes
-* Keybinds
-* Searchable configurations
-* Persistent configurations
-* Theme system
-* Theme autoloading
-* Config import/export
-* Notifications
-* Confirmation dialogs
-* Custom watermarks
-* Player/environment viewer
-* Player relation system
-* Optional CoreGui redesign
-* Roblox chat/backpack/player/emote UI integration
-* Hotbar support
-* Built-in splash screen
-* Ready callbacks
-* Automatic cleanup through `unload()`
+- [Quick start](#quick-start)
+- [Concepts](#concepts)
+- [Windows, tabs & sections](#windows-tabs--sections)
+- [Widgets](#widgets)
+  - [Toggle](#toggle)
+  - [Slider](#slider)
+  - [Dropdown](#dropdown)
+  - [Colorpicker](#colorpicker)
+  - [Button](#button)
+  - [Textbox](#textbox)
+  - [Keybind](#keybind)
+  - [Chat filter](#chat-filter)
+- [Options, flags & persistence](#options-flags--persistence)
+- [Themes](#themes)
+- [Watermark](#watermark)
+- [Notifications & confirm dialogs](#notifications--confirm-dialogs)
+- [Changelog / info panel](#changelog--info-panel)
+- [Feature jump / search](#feature-jump--search)
+- [CoreGui redesign mode](#coregui-redesign-mode)
+- [Licensing / ops backend](#licensing--ops-backend)
+- [Unloading](#unloading)
+- [Full API reference](#full-api-reference)
 
 ---
 
-## Requirements
-
-Veteran is designed for an environment that supports the functionality used by the library.
-
-The loader/library expects access to functionality such as:
-
-* `getgenv()`
-* File functions such as:
-
-  * `readfile`
-  * `writefile`
-  * `makefolder`
-  * `listfiles`
-  * `delfile`
-* HTTP request functionality when required by the backend
-* Standard Roblox services such as:
-
-  * `Players`
-  * `TweenService`
-  * `UserInputService`
-  * `GuiService`
-  * `HttpService`
-  * `RunService`
-  * `Stats`
-  * `TextChatService`
-
-The library itself is normally loaded by **`VeteranLoader.lua`** or an equivalent loader. The UI source is not intended to be injected as a completely standalone file.
-
----
-
-# Installation
-
-Load Veteran through your loader and obtain the global instance:
-
-```lua
-local veteran = getgenv().veteran
-```
-
-The library automatically exposes itself through:
-
-```lua
-getgenv().veteran = veteran
-```
-
-and boots the interface during initialization.
-
-If the library has already been loaded, calling the loader again safely unloads the previous instance before creating the new one.
-
----
-
-# Basic Usage
-
-A minimal Veteran interface can be structured like this:
+## Quick start
 
 ```lua
 local veteran = getgenv().veteran
 
-veteran:window({
-    name = "Example",
-    size = UDim2.fromOffset(560, 430),
-}):tab({
-    name = "Main",
-}):section({
-    name = "General",
-})
-```
+-- boots the UI (splash screen, top bar, all built-in panels)
+veteran:boot()
 
-For most projects, controls should be created through a section.
-
----
-
-# Windows
-
-Create a window with:
-
-```lua
-local window = veteran:window({
-    name = "Example",
-    size = UDim2.fromOffset(560, 430),
-    position = UDim2.fromOffset(68, 52),
-})
-```
-
-### Window properties
-
-| Property     | Type    | Description                      |
-| ------------ | ------- | -------------------------------- |
-| `name`       | string  | Window title                     |
-| `size`       | `UDim2` | Window size                      |
-| `position`   | `UDim2` | Initial position                 |
-| `tab`        | string  | Associates the window with a tab |
-| `frame_name` | string  | Custom frame name                |
-
-Example:
-
-```lua
-local window = veteran:window({
-    name = "Settings",
-    size = UDim2.fromOffset(600, 450),
-})
-```
-
-Windows are draggable and can be resized programmatically.
-
-```lua
-window:resize(UDim2.fromOffset(700, 500))
-```
-
----
-
-# Tabs
-
-Create a tab with:
-
-```lua
-local tab = window:tab({
-    name = "Main",
-})
-```
-
-A tab automatically receives left and right columns for sections.
-
-```text
-┌──────────────────────────────────────┐
-│ Main   Visuals   Settings            │
-├──────────────────┬───────────────────┤
-│                  │                   │
-│   Left Column    │   Right Column    │
-│                  │                   │
-└──────────────────┴───────────────────┘
-```
-
-Tabs can also be opened directly:
-
-```lua
-tab:open()
-```
-
----
-
-# Sections
-
-Sections organize controls inside a tab.
-
-```lua
-local section = tab:section({
-    name = "General",
-})
-```
-
-By default, sections are placed on the left.
-
-Use the right side with:
-
-```lua
-local section = tab:section({
-    name = "Settings",
-    side = "right",
-})
-```
-
-Sections are searchable by their name, tab, and associated control metadata.
-
----
-
-# Controls
-
-## Toggle
-
-```lua
-section:toggle({
-    name = "Enabled",
-    flag = "enabled",
-    default = false,
-
-    callback = function(value)
-        print("Enabled:", value)
-    end,
-})
-```
-
-### Properties
-
-| Property   | Type     | Description                   |
-| ---------- | -------- | ----------------------------- |
-| `name`     | string   | Display name                  |
-| `flag`     | string   | Configuration identifier      |
-| `default`  | boolean  | Initial value                 |
-| `callback` | function | Called when the value changes |
-| `get`      | function | Custom value getter           |
-| `set`      | function | Custom value setter           |
-| `color`    | `Color3` | Optional control color        |
-
----
-
-## Slider
-
-```lua
-section:slider({
-    name = "Walk Speed",
-    flag = "walk_speed",
-
-    min = 1,
-    max = 100,
-    default = 16,
-    interval = 1,
-
-    callback = function(value)
-        print("Speed:", value)
-    end,
-})
-```
-
-You can add a suffix:
-
-```lua
-section:slider({
-    name = "Volume",
-    flag = "volume",
-
-    min = 0,
-    max = 100,
-    default = 50,
-    interval = 1,
-    suffix = "%",
-})
-```
-
-Supported aliases include:
-
-```lua
-min
-minimum
-
-max
-maximum
-
-interval
-step
-decimal
-```
-
----
-
-## Dropdown
-
-```lua
-section:dropdown({
-    name = "Mode",
-    flag = "mode",
-
-    items = {
-        "Legit",
-        "Blatant",
-        "Custom",
-    },
-
-    default = "Legit",
-
-    callback = function(value)
-        print("Selected:", value)
-    end,
-})
-```
-
-`options` can also be used instead of `items`.
-
-```lua
-section:dropdown({
-    name = "Mode",
-    options = {
-        "Legit",
-        "Blatant",
-        "Custom",
-    },
-})
-```
-
-### Multi-select
-
-```lua
-section:dropdown({
-    name = "Targets",
-    flag = "targets",
-
-    items = {
-        "Players",
-        "NPCs",
-        "Objects",
-    },
-
-    multi = true,
-    default = {
-        "Players",
-        "NPCs",
-    },
-
-    callback = function(values)
-        print(values)
-    end,
-})
-```
-
----
-
-## Colorpicker
-
-```lua
-section:colorpicker({
-    name = "Accent",
-    flag = "accent",
-
-    default = Color3.fromRGB(132, 120, 148),
-
-    callback = function(color)
-        print(color)
-    end,
-})
-```
-
-The picker supports HSV selection and direct RGB input.
-
-RGB values can be entered in the form:
-
-```text
-132, 120, 148
-```
-
----
-
-## Button
-
-```lua
-section:button({
-    name = "Execute",
-
-    callback = function()
-        print("Executed!")
-    end,
-})
-```
-
-Buttons are intended for actions that don't require a persistent value.
-
----
-
-## Textbox
-
-```lua
-section:textbox({
-    name = "Username",
-    flag = "username",
-
-    placeholder = "Enter username...",
-
-    callback = function(value)
-        print("Username:", value)
-    end,
-})
-```
-
-You can also control whether text is cleared when the box receives focus:
-
-```lua
-section:textbox({
-    name = "Search",
-    placeholder = "Search...",
-    clear_on_focus = true,
-})
-```
-
----
-
-## Keybind
-
-```lua
-section:keybind({
-    name = "Open Menu",
-    flag = "menu_key",
-    default = Enum.KeyCode.RightShift,
-})
-```
-
-Keybinds are automatically registered with Veteran's configuration and keybind systems.
-
-Supported key representations include Roblox `Enum.KeyCode` values and supported mouse buttons.
-
----
-
-# Flags & Options
-
-Controls can be assigned a `flag` so Veteran can manage their values automatically.
-
-```lua
-section:toggle({
-    name = "Enabled",
-    flag = "enabled",
-    default = true,
-})
-```
-
-Read the current value:
-
-```lua
-local enabled = veteran:get_option("enabled")
-```
-
-Set a value:
-
-```lua
-veteran:set_option("enabled", false)
-```
-
-This makes flags useful for building larger interfaces without manually maintaining every control's state.
-
----
-
-# Configurations
-
-Veteran includes a persistent configuration system.
-
-Configurations can store:
-
-* Toggle values
-* Slider values
-* Dropdown values
-* Color values
-* Text values
-* Keybinds
-
-Export the current configuration:
-
-```lua
-local json = veteran:export_config()
-```
-
-Import a configuration:
-
-```lua
-veteran:import_config(json)
-```
-
-You can also access the complete configuration data:
-
-```lua
-local config = veteran:dump_config()
-```
-
-The exported structure contains:
-
-```lua
-{
-    options = {},
-    binds = {},
-}
-```
-
----
-
-# Themes
-
-Veteran has a centralized theme system.
-
-The default accent is:
-
-```lua
-Color3.fromRGB(132, 120, 148)
-```
-
-Available theme keys include:
-
-```lua
-Accent
-
-Window Background
-Window Border
-
-Tab Background
-Tab Border
-Tab Toggle Background
-
-Section Background
-Section Border
-
-Text
-Disabled Text
-
-Object Background
-Object Border
-
-Dropdown Option Background
-```
-
-Change a theme value:
-
-```lua
-veteran:set_theme(
-    "Accent",
-    Color3.fromRGB(255, 100, 100)
-)
-```
-
-All UI elements bound to that theme property update automatically.
-
----
-
-# Theme Files
-
-Themes can be saved and loaded using Veteran's built-in filesystem support.
-
-Save:
-
-```lua
-veteran:write_theme_file("my_theme")
-```
-
-Load:
-
-```lua
-veteran:load_theme_file("my_theme")
-```
-
-Read:
-
-```lua
-local theme = veteran:read_theme_file("my_theme")
-```
-
-Delete:
-
-```lua
-veteran:delete_theme_file("my_theme")
-```
-
-List available themes:
-
-```lua
-local themes = veteran:list_theme_files()
-```
-
----
-
-# Theme Autoloading
-
-A theme can be marked for automatic loading:
-
-```lua
-veteran:set_autoload("my_theme")
-```
-
-Disable autoloading:
-
-```lua
-veteran:set_autoload()
-```
-
-Veteran stores themes under:
-
-```text
-veteran/
-└── themes/
-    ├── current.json
-    ├── my_theme.json
-    └── autoload.txt
-```
-
----
-
-# Notifications
-
-Display a notification:
-
-```lua
-veteran:notification({
-    text = "Settings saved",
-    duration = 3,
-})
-```
-
-A string can also be passed directly:
-
-```lua
-veteran:notification("Settings saved")
-```
-
-The default notification duration is approximately three seconds.
-
----
-
-# Confirmation Dialogs
-
-Create a confirmation dialog:
-
-```lua
-veteran:confirm({
-    text = "Are you sure?",
-})
-```
-
-Confirmation dialogs are displayed above the existing interface and automatically close conflicting UI popups such as dropdowns and color pickers.
-
----
-
-# Watermark
-
-Veteran includes a configurable watermark.
-
-The watermark can display information such as:
-
-* Veteran name
-* Player display name
-* Current time
-* FPS
-* Ping
-
-Example output:
-
-```text
-veteran  PlayerName  ·  21:43:12  ·  144 fps  ·  32ms
-```
-
-Watermark options can be modified through:
-
-```lua
-veteran:set_watermark_opt("enabled", true)
-```
-
-The watermark automatically refreshes when its displayed information changes.
-
----
-
-# Environment
-
-Veteran includes an environment/player panel for inspecting players currently in the server.
-
-The environment system supports:
-
-* Player searching
-* Player selection
-* Display name
-* Username
-* User ID
-* Team
-* Relation status
-* Player tagging
-* Player viewing
-* Player sorting
-
-Relations can be set to:
-
-```text
-friendly
-enemy
-neutral
-```
-
-Example:
-
-```lua
-veteran:set_relation(player, "friendly")
-```
-
-Retrieve a player's relation:
-
-```lua
-local relation = veteran:get_relation(player)
-```
-
----
-
-# Player Relations
-
-Relations are persisted locally by Veteran.
-
-Example:
-
-```lua
-veteran:set_relation(player, "enemy")
-```
-
-Reset to neutral:
-
-```lua
-veteran:set_relation(player, "neutral")
-```
-
-The UI automatically refreshes the affected player row after changing a relation.
-
----
-
-# Ready Callback
-
-Use `ready()` when you need to run code after Veteran has finished booting.
-
-```lua
+-- run code once the UI has finished booting
 veteran:ready(function(ui)
-    print("Veteran is ready!")
+    local window = ui:window({ name = "configurations", tab = "Configurations" })
+    local page = window:tab({ name = "main" })
+    local section = page:section({ name = "example" })
+
+    section:toggle({
+        name = "silent aim",
+        flag = "silent_aim",
+        default = false,
+        callback = function(on)
+            print("silent aim:", on)
+        end,
+    })
 end)
 ```
 
-If Veteran is already booted, the callback is executed asynchronously.
+The library is a singleton stored at `getgenv().veteran`. Calling `boot()` a second time while it's already mounted is a no-op.
 
 ---
 
-# Boot & Unload
+## Concepts
 
-Veteran can be manually booted:
-
-```lua
-veteran:boot()
-```
-
-The boot process initializes the session, GUI, splash screen, top bar, themes, configuration system, and optional CoreGui integrations.
-
-To completely unload Veteran:
-
-```lua
-veteran:unload()
-```
-
-Unloading removes the interface, disconnects registered connections, restores Roblox UI where applicable, and clears the global Veteran instance.
+| Concept | Description |
+|---|---|
+| **Window** | A floating panel opened from the top bar (e.g. `Configurations`, `Themes`, `Environment`). Created with `veteran:window(...)`. |
+| **Tab** | A named page inside a window. `window:tab({ name = "main" })`. |
+| **Section** | A titled box inside a tab, placed in the left or right column. `page:section({ name = "..." })`. |
+| **Flag** | A unique string key identifying a persisted option (toggle/slider/dropdown/color/text/keybind). Options with a `flag` are auto-saved and reloaded across sessions. |
+| **Option meta** | Internal registry (`veteran.option_meta`) mapping every flag to its widget type, default, current key/bind, and setter — powers persistence, the keybind list, search, and "jump to feature". |
 
 ---
 
-# CoreGui Redesign
-
-Veteran contains an optional CoreGui redesign system.
-
-When enabled for an authorized development environment, Veteran can provide custom versions of:
-
-* Chat
-* Backpack
-* Player list
-* Emotes
-* Hotbar
-
-The native Roblox top bar can also be hidden/repositioned as part of the redesign.
-
-CoreGui rewriting is restricted by Veteran's role system and is disabled by default.
+## Windows, tabs & sections
 
 ```lua
-local CoreGui_Redesign = false
-```
-
----
-
-# Layout
-
-The hotbar and top bar have configurable layout values.
-
-Default values:
-
-```lua
-{
-    hotbar_size = 36,
-    hotbar_spacing = 5,
-
-    topbar_autohide = false,
-    hide_fullscreen_exit = true,
-}
-```
-
-Values can be changed through:
-
-```lua
-veteran:set_layout("hotbar_size", 40)
-veteran:set_layout("hotbar_spacing", 6)
-
-veteran:set_layout("topbar_autohide", true)
-veteran:set_layout("hide_fullscreen_exit", false)
-```
-
----
-
-# Internal UI Helpers
-
-Veteran exposes several lower-level helpers for developers extending the library.
-
-Examples include:
-
-```lua
-veteran:create()
-veteran:make_panel()
-veteran:make_draggable()
-veteran:make_swatch()
-veteran:make_slider()
-veteran:make_dropdown()
-veteran:make_button()
-veteran:make_textbox()
-veteran:make_keybind()
-```
-
-These are useful when creating custom components that should visually integrate with the Veteran UI.
-
----
-
-# Example
-
-A more complete interface:
-
-```lua
-local veteran = getgenv().veteran
-
 local window = veteran:window({
-    name = "Example",
-    size = UDim2.fromOffset(600, 450),
+    name = "configurations",     -- window title
+    tab = "Configurations",      -- ties this window to a top-bar tab
+    size = UDim2.fromOffset(560, 430),
+    position = UDim2.fromOffset(68, 68),
 })
 
-local main = window:tab({
-    name = "Main",
-})
-
-local general = main:section({
-    name = "General",
-})
-
-general:toggle({
-    name = "Enabled",
-    flag = "enabled",
-    default = true,
-
-    callback = function(value)
-        print("Enabled:", value)
-    end,
-})
-
-general:slider({
-    name = "Speed",
-    flag = "speed",
-
-    min = 1,
-    max = 100,
-    default = 16,
-    interval = 1,
-
-    callback = function(value)
-        print("Speed:", value)
-    end,
-})
-
-general:dropdown({
-    name = "Mode",
-    flag = "mode",
-
-    items = {
-        "Default",
-        "Advanced",
-        "Custom",
-    },
-
-    default = "Default",
-
-    callback = function(value)
-        print("Mode:", value)
-    end,
-})
-
-general:colorpicker({
-    name = "Accent",
-    flag = "accent",
-
-    default = Color3.fromRGB(132, 120, 148),
-
-    callback = function(color)
-        print("Color:", color)
-    end,
-})
-
-general:textbox({
-    name = "Message",
-    flag = "message",
-
-    placeholder = "Enter message...",
-
-    callback = function(value)
-        print("Message:", value)
-    end,
-})
-
-general:keybind({
-    name = "Menu Key",
-    flag = "menu_key",
-    default = Enum.KeyCode.RightShift,
-})
-
-general:button({
-    name = "Notify",
-
-    callback = function()
-        veteran:notification("Hello from Veteran!")
-    end,
-})
+local page = window:tab({ name = "combat" })   -- creates or returns existing tab
+local left_section  = page:section({ name = "aimbot" })                 -- left column (default)
+local right_section = page:section({ name = "esp", side = "right" })    -- right column
 ```
 
----
-
-# File Structure
-
-Veteran creates and uses the following local structure:
-
-```text
-veteran/
-├── themes/
-│   ├── *.json
-│   └── autoload.txt
-│
-├── configs/
-│   └── ...
-│
-├── environment.json
-└── coregui_rewrite.txt
-```
-
-Themes and configuration data are separated so UI appearance can be managed independently from feature configurations.
+- Calling `window:tab({ name = ... })` again with the same name just switches to it (`open_tab`).
+- Sections auto-size vertically to their contents and stack top-to-bottom in whichever column they're placed in.
+- `window:section(...)` is shorthand that adds to whatever the currently open tab is (creating a `"main"` tab if none exists yet).
 
 ---
 
-# Design Philosophy
+## Widgets
 
-Veteran is built around three main principles:
+All widget constructors live on a **section** object (`section:toggle{...}`, `section:slider{...}`, etc.) and share this pattern:
 
-### Modular
+- `flag` *(optional)* — if given, the widget's value is registered in `veteran.options`, persisted to disk, and reloaded on next boot.
+- `name` *(optional)* — display label. Falls back to a prettified version of `flag` (underscores → spaces) if omitted.
+- `get` / `set` *(optional)* — custom getter/setter, used instead of the flag-backed default when you want to bind the widget to something else entirely.
+- `callback` *(optional, alias `set`)* — fired whenever the value changes.
 
-Windows, tabs, sections, and controls are independent pieces that can be composed into larger interfaces.
-
-### Persistent
-
-Themes, options, keybinds, and layout settings can persist between sessions.
-
-### Consistent
-
-Controls use the same theme system, animation behavior, spacing, typography, and interaction patterns throughout the interface.
-
----
-
-# API Reference
-
-### Core
+### Toggle
 
 ```lua
-veteran:boot()
-veteran:unload()
-veteran:ready(callback)
-
-veteran:window(props)
-veteran:add_tab(name)
-veteran:toggle_tab(name)
-veteran:select_tab(name)
+section:toggle({
+    name = "esp",
+    flag = "esp_enabled",
+    default = false,
+    color = { flag = "esp_color", default = Color3.fromRGB(255, 0, 0) }, -- optional attached color swatch
+    callback = function(on) ... end,
+})
 ```
 
-### Controls
+### Slider
 
 ```lua
-section:toggle(props)
-section:slider(props)
-section:dropdown(props)
-section:colorpicker(props)
-section:button(props)
-section:textbox(props)
-section:keybind(props)
+section:slider({
+    name = "fov",
+    flag = "fov_radius",
+    min = 10,
+    max = 500,
+    default = 120,
+    interval = 1,     -- step size; supports fractional steps (e.g. 0.01)
+    suffix = "px",    -- appended to the displayed value
+    callback = function(value) ... end,
+})
 ```
 
-### Options
+Right-click (or `MouseButton2`) on a slider label/track to open a precise numeric-entry popup.
+
+### Dropdown
+
+```lua
+-- single-select
+section:dropdown({
+    name = "target priority",
+    flag = "priority",
+    items = { "closest", "lowest health", "highest health" },
+    default = "closest",
+})
+
+-- multi-select
+section:dropdown({
+    name = "ignore teams",
+    flag = "ignored_teams",
+    items = { "Red", "Blue", "Spectator" },
+    multi = true,
+    default = {},
+})
+```
+
+### Colorpicker
+
+```lua
+section:colorpicker({
+    name = "chams color",
+    flag = "chams_color",
+    default = Color3.fromRGB(0, 255, 140),
+})
+```
+
+Opens a saturation/value square + hue slider + RGB text entry.
+
+### Button
+
+```lua
+section:button({
+    name = "reset camera",
+    flag = "reset_camera",   -- optional, enables keybind assignment
+    callback = function() ... end,
+})
+```
+
+### Textbox
+
+```lua
+section:textbox({
+    name = "webhook url",
+    flag = "webhook_url",
+    placeholder = "https://...",
+    default = "",
+    callback = function(text) ... end,
+})
+```
+
+### Keybind
+
+```lua
+section:keybind({
+    name = "toggle esp",
+    flag = "esp_enabled",   -- binds to an existing toggle/button flag
+    default = Enum.KeyCode.E,
+})
+```
+
+Click the bind chip and press any key/mouse button to rebind; press **Escape** to clear. Right-click a row in the **Keybinds** panel to flip between `toggle` and `hold` mode.
+
+### Chat filter
+
+A prebuilt "keyword watcher" widget for logging chat matches:
+
+```lua
+page:chat_filter({
+    name = "trigger words",
+    side = "right",
+    flag = "chat_filter_keywords",
+    enabled_flag = "chat_filter_enabled",
+})
+```
+
+Renders a keyword input + chip list + a live log of matching players (click a logged row to copy `DisplayName | UserId`).
+
+---
+
+## Options, flags & persistence
+
+Every flagged widget writes into `veteran.options[flag]` and is described in `veteran.option_meta[flag]`. Low-level accessors:
 
 ```lua
 veteran:get_option(flag)
 veteran:set_option(flag, value)
-veteran:add_option(def)
+```
 
-veteran:save_config()
-veteran:load_config()
+Config is saved to **`veteran/configs/current.json`** (falls back to reading legacy `veteran/config.json`), debounced ~0.4s after the last change. You can also export/import a full config blob manually:
 
-veteran:export_config()
+```lua
+local json = veteran:export_config()
 veteran:import_config(json)
 ```
 
-### Themes
+UI-only flags (top bar visibility, the menu keybind, watermark toggle, etc.) are excluded from `export_config`/`import_config` — they live in the same save file but are treated as chrome, not "your script's settings".
+
+---
+
+## Themes
+
+Opened from the top bar's **Themes** tab. Themes cover the full color palette plus hotbar layout (`hotbar_size`, `hotbar_spacing`) and a couple of chrome toggles (top bar autohide, "hide fullscreen exit button").
 
 ```lua
-veteran:set_theme(key, color)
-
-veteran:apply_theme_map(map)
-
-veteran:write_theme_file(name)
-veteran:read_theme_file(name)
-veteran:load_theme_file(name)
-veteran:delete_theme_file(name)
-veteran:list_theme_files()
-
-veteran:set_autoload(name)
-veteran:reset_theme()
+veteran:set_theme("Accent", Color3.fromRGB(120, 90, 200))
+veteran:write_theme_file("my_theme")        -- veteran/themes/my_theme.json
+veteran:load_theme_file("my_theme")
+veteran:set_autoload("my_theme")            -- load automatically on next boot
+veteran:set_autoload(nil)                   -- disable autoload
+veteran:reset_theme()                       -- restore defaults
 ```
 
-### UI
+Theme keys: `Accent`, `Window Background`, `Window Border`, `Tab Background`, `Tab Border`, `Tab Toggle Background`, `Section Background`, `Section Border`, `Text`, `Disabled Text`, `Object Background`, `Object Border`, `Dropdown Option Background`.
+
+---
+
+## Watermark
+
+A small, draggable, always-on-top label. Configurable from the **Watermark** tab: name, clock, FPS, ping — each independently toggleable. Position/anchor persist to `veteran/watermark.json` whenever you drag it.
 
 ```lua
-veteran:notification(props)
-veteran:confirm(props)
-
-veteran:set_layout(key, value)
-veteran:set_watermark_opt(key, value)
-
-veteran:set_relation(player, status)
-veteran:get_relation(player)
+veteran:set_watermark_opt("enabled", true)
+veteran:set_watermark_opt("fps", true)
 ```
 
 ---
 
-# Version
+## Notifications & confirm dialogs
 
-Current version:
+```lua
+veteran:notification({ text = "loaded config", duration = 3 })
 
-```text
-1.3.0
+veteran:confirm({
+    name = "reset all settings?",
+    options = { "Yes", "No" },
+    callback = function(choice)
+        if choice == "Yes" then veteran:reset_theme() end
+    end,
+})
 ```
 
 ---
 
-# Notes
+## Changelog / info panel
 
-Veteran's primary UI source is designed to be loaded by the project's loader rather than executed independently.
+The **info** tab shows the version number, a scrollable changelog, and the current license role/key.
 
-Some functionality is environment-specific, particularly filesystem access, HTTP requests, session/license handling, and optional CoreGui rewriting.
+```lua
+veteran:set_changelog({
+    { tag = "+", text = "added silent aim", jump = { tab = "combat", sections = { "aimbot" } } },
+    { tag = "-", text = "removed legacy esp" },
+    { tag = "M", text = "reworked config window" },
+})
+```
 
-For production deployments, keep authentication/backend credentials and other sensitive configuration outside of publicly distributed source files.
+`tag` is one of `"+"` (added, accent color), `"-"` (removed, red), `"M"` (modified, gold), or omitted for a plain note. If `jump` is supplied, clicking the entry calls `reveal_feature` to open the right tab and highlight the section.
 
 ---
 
-## License
+## Feature jump / search
 
-Choose a license appropriate for your project before publishing this repository.
+Every section/control is searchable via the search box in the **Configurations** window (matches section name, control names, flags, and page name). You can also jump to a feature programmatically:
 
-If this project is proprietary, consider adding:
+```lua
+veteran:reveal_feature({
+    tab = "combat",
+    sections = { "aimbot" },   -- pulses the section border/title
+    flag = "fov_radius",       -- also pulses this specific control
+})
 
-```text
-Copyright © 2026 Veteran
+-- or just open a top-bar chrome panel (Themes/Environment/etc.)
+veteran:reveal_feature({ chrome = "Environment" })
+```
 
-All rights reserved.
+---
 
-Unauthorized redistribution, resale, modification, or
-republication of this software is prohibited without permission.
+## CoreGui redesign mode
+
+Set the `CoreGui_Redesign` local at the top of the file to `true` (or toggle "rewrite coregui" in the Themes tab, dev/owner only) to have veteran take over Roblox's native chat, backpack, player list, and emotes menu — hiding the stock top bar and rendering its own hotbar (number-key tool switching) and utility flyout panels instead. With it left `false`, veteran only adds its own top bar alongside the default Roblox UI and leaves chat/backpack/players/emotes untouched.
+
+Only users resolved as `dev`/`owner` (see [Licensing](#licensing--ops-backend)) can enable this mode at runtime.
+
+---
+
+## Licensing / ops backend
+
+veteran ships with an optional Supabase-backed licensing/ops layer (`veteran:ops(action, extra)`) used for:
+
+- resolving the caller's role (`veteran` / `dev` / `owner`) via `getgenv().veteran_session`
+- an in-game "panel" tab (dev/owner only) listing other live licensed users, with join/bring actions
+- a "report" dialog (game support / report another user / request dev-owner assistance) with server-side cooldowns
+
+This is entirely optional infrastructure for products that gate features by license tier — a standalone UI consumer can ignore `veteran:ops`, `OWNER_IDS`/`DEV_IDS`, and the `panel`/report tabs entirely.
+
+---
+
+## Unloading
+
+```lua
+veteran:unload()
+```
+
+Disconnects every signal, destroys the ScreenGui, restores any hidden CoreGui elements, and clears `getgenv().veteran` so a fresh inject can boot cleanly.
+
+---
+
+## Full API reference
+
+### Lifecycle
+| Method | Description |
+|---|---|
+| `veteran:boot()` | Mounts and plays the splash/boot sequence. |
+| `veteran:ready(fn)` | Runs `fn(veteran)` once booted (immediately if already booted). |
+| `veteran:unload()` | Tears down the entire UI and its hooks. |
+
+### Windows
+| Method | Description |
+|---|---|
+| `veteran:window(props)` | Creates/returns a draggable window. `props.tab` links it to a top-bar tab. |
+| `window:tab(props)` | Creates or switches to a named tab. |
+| `window:open_tab(name)` | Switches to an existing tab. |
+| `window:section(props)` | Adds a section to the current tab. |
+| `window:resize(udim2)` | Resizes the window frame. |
+
+### Sections (widget factories)
+`section:toggle`, `section:slider`, `section:dropdown`, `section:colorpicker` (alias `section:color`), `section:button`, `section:textbox`, `section:keybind`, `page:chat_filter`.
+
+### Options
+| Method | Description |
+|---|---|
+| `veteran:get_option(flag)` / `set_option(flag, value)` | Low-level flag read/write. |
+| `veteran:export_config()` / `import_config(json)` | Serialize/apply a full options+binds blob. |
+
+### Theming
+`set_theme`, `write_theme_file`, `load_theme_file`, `delete_theme_file`, `list_theme_files`, `set_autoload`, `reset_theme`.
+
+### Misc UI
+`notification`, `confirm`, `set_changelog`, `reveal_feature`.
+
+### Chrome / redesign
+`set_coregui_rewrite(on)`, `wants_coregui_redesign()`, `set_utility_open(name, on)` (`"chat" | "backpack" | "players" | "emotes"`).
+
+---
+
+## File layout on disk
+
+```
+veteran/
+├─ themes/
+│  ├─ <name>.json
+│  └─ autoload.txt
+├─ configs/
+│  └─ current.json
+├─ environment.json      -- friendly/enemy player relations
+├─ watermark.json
+└─ coregui_rewrite.txt
 ```
